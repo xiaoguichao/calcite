@@ -16,12 +16,27 @@
  */
 package org.apache.calcite.test;
 
+import org.apache.calcite.adapter.enumerable.CallImplementor;
+import org.apache.calcite.adapter.enumerable.RexImpTable.NullAs;
+import org.apache.calcite.adapter.enumerable.RexToLixTranslator;
 import org.apache.calcite.adapter.java.ReflectiveSchema;
 import org.apache.calcite.jdbc.CalciteConnection;
+import org.apache.calcite.linq4j.Ord;
+import org.apache.calcite.linq4j.tree.Expression;
+import org.apache.calcite.linq4j.tree.Expressions;
+import org.apache.calcite.linq4j.tree.Types;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.rel.type.RelProtoDataType;
+import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.schema.FunctionParameter;
+import org.apache.calcite.schema.ImplementableFunction;
+import org.apache.calcite.schema.ScalarFunction;
 import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.schema.impl.AbstractSchema;
 import org.apache.calcite.schema.impl.ScalarFunctionImpl;
 import org.apache.calcite.schema.impl.ViewTable;
+import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Smalls;
 
 import com.google.common.collect.ImmutableList;
@@ -29,10 +44,13 @@ import com.google.common.collect.ImmutableList;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.hamcrest.CoreMatchers.is;
@@ -445,8 +463,7 @@ public class UdfTest {
     with.query("select my_sum(\"deptno\") as p from EMPLOYEES\n")
         .returns("P=50\n");
     with.query("select my_sum(\"name\") as p from EMPLOYEES\n")
-        .throws_(
-            "Cannot apply 'MY_SUM' to arguments of type 'MY_SUM(<JAVATYPE(CLASS JAVA.LANG.STRING)>)'. Supported form(s): 'MY_SUM(<NUMERIC>)");
+        .throws_("No match found for function signature MY_SUM(<CHARACTER>)");
     with.query("select my_sum(\"deptno\", 1) as p from EMPLOYEES\n")
         .throws_(
             "No match found for function signature MY_SUM(<NUMERIC>, <NUMERIC>)");
@@ -461,6 +478,80 @@ public class UdfTest {
     with.query("select \"deptno\", my_sum2(\"deptno\") as p from EMPLOYEES\n"
         + "group by \"deptno\"")
         .returnsUnordered("deptno=20; P=20", "deptno=10; P=30");
+  }
+
+  /** Tests user-defined aggregate function. */
+  @Test public void testUserDefinedAggregateFunctionWithMultipleParameters() throws Exception {
+    final String empDept = JdbcTest.EmpDeptTableFactory.class.getName();
+    final String sum21 = Smalls.MyTwoParamsSumFunctionFilter1.class.getName();
+    final String sum22 = Smalls.MyTwoParamsSumFunctionFilter2.class.getName();
+    final String sum31 = Smalls.MyThreeParamsSumFunctionWithFilter1.class.getName();
+    final String sum32 = Smalls.MyThreeParamsSumFunctionWithFilter2.class.getName();
+    final CalciteAssert.AssertThat with = CalciteAssert.model("{\n"
+        + "  version: '1.0',\n"
+        + "   schemas: [\n"
+        + "     {\n"
+        + "       name: 'adhoc',\n"
+        + "       tables: [\n"
+        + "         {\n"
+        + "           name: 'EMPLOYEES',\n"
+        + "           type: 'custom',\n"
+        + "           factory: '" + empDept + "',\n"
+        + "           operand: {'foo': true, 'bar': 345}\n"
+        + "         }\n"
+        + "       ],\n"
+        + "       functions: [\n"
+        + "         {\n"
+        + "           name: 'MY_SUM2',\n"
+        + "           className: '" + sum21 + "'\n"
+        + "         },\n"
+        + "         {\n"
+        + "           name: 'MY_SUM2',\n"
+        + "           className: '" + sum22 + "'\n"
+        + "         },\n"
+        + "         {\n"
+        + "           name: 'MY_SUM3',\n"
+        + "           className: '" + sum31 + "'\n"
+        + "         },\n"
+        + "         {\n"
+        + "           name: 'MY_SUM3',\n"
+        + "           className: '" + sum32 + "'\n"
+        + "         }\n"
+        + "       ]\n"
+        + "     }\n"
+        + "   ]\n"
+        + "}")
+        .withDefaultSchema("adhoc");
+    with.withDefaultSchema(null)
+        .query(
+            "select \"adhoc\".my_sum3(\"deptno\",\"name\",'Eric') as p from \"adhoc\".EMPLOYEES\n")
+        .returns("P=20\n");
+    with.query("select \"adhoc\".my_sum3(\"empid\",\"deptno\",\"commission\") as p "
+        + "from \"adhoc\".EMPLOYEES\n")
+        .returns("P=330\n");
+    with.query("select \"adhoc\".my_sum3(\"empid\",\"deptno\",\"commission\"),\"name\" as p "
+        + "from \"adhoc\".EMPLOYEES\n")
+        .throws_("Expression 'name' is not being grouped");
+    with.query("select \"name\",\"adhoc\".my_sum3(\"empid\",\"deptno\",\"commission\") as p "
+        + "from \"adhoc\".EMPLOYEES\n"
+        + "group by \"name\"")
+        .returnsUnordered("name=Theodore; P=0",
+            "name=Eric; P=220",
+            "name=Bill; P=110",
+            "name=Sebastian; P=0");
+    with.query("select \"adhoc\".my_sum3(\"empid\",\"deptno\",\"salary\") as p "
+        + "from \"adhoc\".EMPLOYEES\n")
+        .throws_("No match found for function signature MY_SUM3(<NUMERIC>, "
+            + "<NUMERIC>, <APPROXIMATE_NUMERIC>)");
+    with.query("select \"adhoc\".my_sum3(\"empid\",\"deptno\",\"name\") as p "
+        + "from \"adhoc\".EMPLOYEES\n");
+    with.query("select \"adhoc\".my_sum2(\"commission\",250) as p "
+        + "from \"adhoc\".EMPLOYEES\n")
+        .returns("P=1500\n");
+    with.query("select \"adhoc\".my_sum2(\"name\",250) as p from \"adhoc\".EMPLOYEES\n")
+        .throws_("No match found for function signature MY_SUM2(<CHARACTER>, <NUMERIC>)");
+    with.query("select \"adhoc\".my_sum2(\"empid\",0.0) as p from \"adhoc\".EMPLOYEES\n")
+        .throws_("No match found for function signature MY_SUM2(<NUMERIC>, <NUMERIC>)");
   }
 
   /** Test for
@@ -513,9 +604,7 @@ public class UdfTest {
     with.query("select my_sum3(\"deptno\") as p from EMPLOYEES\n")
         .returns("P=50\n");
     with.query("select my_sum3(\"name\") as p from EMPLOYEES\n")
-        .throws_("Cannot apply 'MY_SUM3' to arguments of type "
-            + "'MY_SUM3(<JAVATYPE(CLASS JAVA.LANG.STRING)>)'. "
-            + "Supported form(s): 'MY_SUM3(<NUMERIC>)");
+        .throws_("No match found for function signature MY_SUM3(<CHARACTER>)");
     with.query("select my_sum3(\"deptno\", 1) as p from EMPLOYEES\n")
         .throws_("No match found for function signature "
             + "MY_SUM3(<NUMERIC>, <NUMERIC>)");
@@ -734,6 +823,138 @@ public class UdfTest {
         + "  '1970-01-01 00:00:00',\n"
         + "  '1997-02-01 00:00:00')")
         .returnsValue("0");
+  }
+
+  /**
+   * Test case for
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-1834">[CALCITE-1834]
+   * User-defined function for Arrays</a>.
+   */
+  @Test public void testArrayUserDefinedFunction() throws Exception {
+    try (Connection connection = DriverManager.getConnection("jdbc:calcite:")) {
+      CalciteConnection calciteConnection =
+          connection.unwrap(CalciteConnection.class);
+      SchemaPlus rootSchema = calciteConnection.getRootSchema();
+      rootSchema.add("hr", new ReflectiveSchema(new JdbcTest.HrSchema()));
+
+      SchemaPlus post = rootSchema.add("POST", new AbstractSchema());
+      post.add("ARRAY_APPEND", new ArrayAppendDoubleFunction());
+      post.add("ARRAY_APPEND", new ArrayAppendIntegerFunction());
+      final String sql = "select \"empid\" as EMPLOYEE_ID,\n"
+          + "  \"name\" || ' ' || \"name\" as EMPLOYEE_NAME,\n"
+          + "  \"salary\" as EMPLOYEE_SALARY,\n"
+          + "  POST.ARRAY_APPEND(ARRAY[1,2,3], \"deptno\") as DEPARTMENTS\n"
+          + "from \"hr\".\"emps\"";
+
+      final String result = ""
+          + "EMPLOYEE_ID=100; EMPLOYEE_NAME=Bill Bill;"
+          + " EMPLOYEE_SALARY=10000.0; DEPARTMENTS=[1, 2, 3, 10]\n"
+          + "EMPLOYEE_ID=200; EMPLOYEE_NAME=Eric Eric;"
+          + " EMPLOYEE_SALARY=8000.0; DEPARTMENTS=[1, 2, 3, 20]\n"
+          + "EMPLOYEE_ID=150; EMPLOYEE_NAME=Sebastian Sebastian;"
+          + " EMPLOYEE_SALARY=7000.0; DEPARTMENTS=[1, 2, 3, 10]\n"
+          + "EMPLOYEE_ID=110; EMPLOYEE_NAME=Theodore Theodore;"
+          + " EMPLOYEE_SALARY=11500.0; DEPARTMENTS=[1, 2, 3, 10]\n";
+
+      try (Statement statement = connection.createStatement();
+           ResultSet resultSet = statement.executeQuery(sql)) {
+        assertThat(CalciteAssert.toString(resultSet), is(result));
+      }
+      connection.close();
+    }
+  }
+
+  /**
+   * Base class for functions that append arrays.
+   */
+  private abstract static class ArrayAppendScalarFunction
+      implements ScalarFunction, ImplementableFunction {
+    public List<FunctionParameter> getParameters() {
+      final List<FunctionParameter> parameters = new ArrayList<>();
+      for (final Ord<RelProtoDataType> type : Ord.zip(getParams())) {
+        parameters.add(
+            new FunctionParameter() {
+              public int getOrdinal() {
+                return type.i;
+              }
+
+              public String getName() {
+                return "arg" + type.i;
+              }
+
+              public RelDataType getType(RelDataTypeFactory typeFactory) {
+                return type.e.apply(typeFactory);
+              }
+
+              public boolean isOptional() {
+                return false;
+              }
+            });
+      }
+      return parameters;
+    }
+
+    protected abstract List<RelProtoDataType> getParams();
+
+    @Override public CallImplementor getImplementor() {
+      return new CallImplementor() {
+        public Expression implement(RexToLixTranslator translator, RexCall call, NullAs nullAs) {
+          Method lookupMethod =
+              Types.lookupMethod(Smalls.AllTypesFunction.class,
+                  "arrayAppendFun", List.class, Integer.class);
+          return Expressions.call(lookupMethod,
+              translator.translateList(call.getOperands(), nullAs));
+        }
+      };
+    }
+  }
+
+  /** Function with signature "f(ARRAY OF INTEGER, INTEGER) returns ARRAY OF
+   * INTEGER". */
+  private class ArrayAppendIntegerFunction extends ArrayAppendScalarFunction {
+    @Override public RelDataType getReturnType(RelDataTypeFactory typeFactory) {
+      return typeFactory.createArrayType(
+          typeFactory.createSqlType(SqlTypeName.INTEGER), -1);
+    }
+
+    @Override public List<RelProtoDataType> getParams() {
+      return ImmutableList.of(
+          new RelProtoDataType() {
+            public RelDataType apply(RelDataTypeFactory typeFactory) {
+              return typeFactory.createArrayType(
+                  typeFactory.createSqlType(SqlTypeName.INTEGER), -1);
+            }
+          },
+          new RelProtoDataType() {
+            public RelDataType apply(RelDataTypeFactory typeFactory) {
+              return typeFactory.createSqlType(SqlTypeName.INTEGER);
+            }
+          });
+    }
+  }
+
+  /** Function with signature "f(ARRAY OF DOUBLE, INTEGER) returns ARRAY OF
+   * DOUBLE". */
+  private class ArrayAppendDoubleFunction extends ArrayAppendScalarFunction {
+    public RelDataType getReturnType(RelDataTypeFactory typeFactory) {
+      return typeFactory.createArrayType(
+          typeFactory.createSqlType(SqlTypeName.DOUBLE), -1);
+    }
+
+    public List<RelProtoDataType> getParams() {
+      return ImmutableList.of(
+          new RelProtoDataType() {
+            public RelDataType apply(RelDataTypeFactory typeFactory) {
+              return typeFactory.createArrayType(
+                  typeFactory.createSqlType(SqlTypeName.DOUBLE), -1);
+            }
+          },
+          new RelProtoDataType() {
+            public RelDataType apply(RelDataTypeFactory typeFactory) {
+              return typeFactory.createSqlType(SqlTypeName.INTEGER);
+            }
+          });
+    }
   }
 
 }

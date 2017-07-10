@@ -754,6 +754,37 @@ public class RelToSqlConverterTest {
         .ok(expected);
   }
 
+  /** Test case for
+   * <a href="https://issues.apache.org/jira/browse/CALCITE-1826">[CALCITE-1826]
+   * JDBC dialect-specific FLOOR fails when in GROUP BY</a>. */
+  @Test public void testFloorWithGroupBy() {
+    final String query = "SELECT floor(\"hire_date\" TO MINUTE)\n"
+        + "FROM \"employee\"\n"
+        + "GROUP BY floor(\"hire_date\" TO MINUTE)";
+    final String expected = "SELECT TRUNC(hire_date, 'MI')\n"
+        + "FROM foodmart.employee\n"
+        + "GROUP BY TRUNC(hire_date, 'MI')";
+    final String expectedOracle = "SELECT TRUNC(\"hire_date\", 'MINUTE')\n"
+        + "FROM \"foodmart\".\"employee\"\n"
+        + "GROUP BY TRUNC(\"hire_date\", 'MINUTE')";
+    final String expectedPostgresql = "SELECT DATE_TRUNC('MINUTE', \"hire_date\")\n"
+        + "FROM \"foodmart\".\"employee\"\n"
+        + "GROUP BY DATE_TRUNC('MINUTE', \"hire_date\")";
+    final String expectedMysql = "SELECT"
+        + " DATE_FORMAT(`hire_date`, '%Y-%m-%d %k:%i:00')\n"
+        + "FROM `foodmart`.`employee`\n"
+        + "GROUP BY DATE_FORMAT(`hire_date`, '%Y-%m-%d %k:%i:00')";
+    sql(query)
+        .dialect(DatabaseProduct.HSQLDB.getDialect())
+        .ok(expected)
+        .dialect(DatabaseProduct.ORACLE.getDialect())
+        .ok(expectedOracle)
+        .dialect(DatabaseProduct.POSTGRESQL.getDialect())
+        .ok(expectedPostgresql)
+        .dialect(DatabaseProduct.MYSQL.getDialect())
+        .ok(expectedMysql);
+  }
+
   @Test public void testMatchRecognizePatternExpression() {
     String sql = "select *\n"
         + "  from \"product\" match_recognize\n"
@@ -774,9 +805,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -797,9 +828,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" + $)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -820,9 +851,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (^ \"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -843,9 +874,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (^ \"STRT\" \"DOWN\" + \"UP\" + $)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -866,9 +897,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" * \"UP\" ?)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -889,11 +920,10 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" {- \"DOWN\" -} \"UP\" ?)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
-
     sql(sql).ok(expected);
   }
 
@@ -913,9 +943,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" { 2 } \"UP\" { 3, })\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -936,9 +966,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" { , 2 } \"UP\" { 3, 5 })\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -959,9 +989,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" {- \"DOWN\" + -} {- \"UP\" * -})\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -985,9 +1015,9 @@ public class RelToSqlConverterTest {
         + "(\"A\" \"B\" \"C\" | \"A\" \"C\" \"B\" | \"B\" \"A\" \"C\" "
         + "| \"B\" \"C\" \"A\" | \"C\" \"A\" \"B\" | \"C\" \"B\" \"A\")\n"
         + "DEFINE "
-        + "\"A\" AS PREV(\"A\".\"net_weight\", 0) < PREV(\"A\".\"net_weight\", 1), "
-        + "\"B\" AS PREV(\"B\".\"net_weight\", 0) > PREV(\"B\".\"net_weight\", 1), "
-        + "\"C\" AS PREV(\"C\".\"net_weight\", 0) < PREV(\"C\".\"net_weight\", 1))";
+        + "\"A\" AS \"A\".\"net_weight\" < PREV(\"A\".\"net_weight\", 1), "
+        + "\"B\" AS \"B\".\"net_weight\" > PREV(\"B\".\"net_weight\", 1), "
+        + "\"C\" AS \"C\".\"net_weight\" < PREV(\"C\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
@@ -1007,9 +1037,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1030,9 +1060,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))\n"
         + "ORDER BY \"net_weight\"";
     sql(sql).ok(expected);
@@ -1071,9 +1101,9 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))\n"
         + "ORDER BY \"net_weight\"";
     sql(sql).ok(expected);
@@ -1095,10 +1125,10 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0)"
-        + " < PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0)"
-        + " > NEXT(PREV(\"UP\".\"net_weight\", 0), 1))";
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "NEXT(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
@@ -1118,10 +1148,10 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) "
-        + "< FIRST(\"DOWN\".\"net_weight\", 0), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) "
-        + "> LAST(\"UP\".\"net_weight\", 0))";
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "FIRST(\"DOWN\".\"net_weight\", 0), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "LAST(\"UP\".\"net_weight\", 0))";
     sql(sql).ok(expected);
   }
 
@@ -1141,10 +1171,10 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
-        + "LAST(\"UP\".\"net_weight\", 0) + LAST(\"UP\".\"gross_weight\", 0))";
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "LAST(\"UP\".\"net_weight\" + \"UP\".\"gross_weight\", 0))";
     sql(sql).ok(expected);
   }
 
@@ -1165,10 +1195,11 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
-        + "LAST(\"UP\".\"net_weight\", 0) + LAST(\"UP\".\"gross_weight\", 0))";
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "PREV(LAST(\"UP\".\"net_weight\" + "
+        + "\"UP\".\"gross_weight\", 0), 3))";
     sql(sql).ok(expected);
   }
 
@@ -1192,18 +1223,18 @@ public class RelToSqlConverterTest {
         + "FROM \"foodmart\".\"product\") "
         + "MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL MATCH_NUMBER () AS \"MATCH_NUM\", "
-        + "FINAL CLASSIFIER() AS \"VAR_MATCH\", "
-        + "FINAL \"STRT\".\"net_weight\" AS \"START_NW\", "
-        + "FINAL LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
-        + "FINAL LAST(\"UP\".\"net_weight\", 0) AS \"END_NW\"\n"
+        + "MATCH_NUMBER () AS \"MATCH_NUM\", "
+        + "CLASSIFIER() AS \"VAR_MATCH\", "
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
+        + "LAST(\"UP\".\"net_weight\", 0) AS \"END_NW\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1226,16 +1257,16 @@ public class RelToSqlConverterTest {
         + "FROM \"foodmart\".\"product\") "
         + "MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL \"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
         + "FINAL LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
-        + "FINAL LAST(\"UP\".\"net_weight\", 0) AS \"END_NW\"\n"
+        + "LAST(\"UP\".\"net_weight\", 0) AS \"END_NW\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1258,16 +1289,16 @@ public class RelToSqlConverterTest {
         + "FROM \"foodmart\".\"product\") "
         + "MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL \"STRT\".\"net_weight\" AS \"START_NW\", "
-        + "FINAL (RUNNING LAST(\"DOWN\".\"net_weight\", 0)) AS \"BOTTOM_NW\", "
-        + "FINAL LAST(\"UP\".\"net_weight\", 0) AS \"END_NW\"\n"
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "RUNNING LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
+        + "LAST(\"UP\".\"net_weight\", 0) AS \"END_NW\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1289,17 +1320,18 @@ public class RelToSqlConverterTest {
         + "FROM (SELECT *\n"
         + "FROM \"foodmart\".\"product\") "
         + "MATCH_RECOGNIZE(\n"
-        + "MEASURES FINAL \"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "MEASURES "
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
         + "FINAL COUNT(\"UP\".\"net_weight\") AS \"UP_CNT\", "
         + "FINAL COUNT(\"*\".\"net_weight\") AS \"DOWN_CNT\", "
-        + "FINAL (RUNNING COUNT(\"*\".\"net_weight\")) AS \"RUNNING_CNT\"\n"
+        + "RUNNING COUNT(\"*\".\"net_weight\") AS \"RUNNING_CNT\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1323,17 +1355,17 @@ public class RelToSqlConverterTest {
         + "FROM \"foodmart\".\"product\") "
         + "MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL FIRST(\"STRT\".\"net_weight\", 0) AS \"START_NW\", "
-        + "FINAL LAST(\"UP\".\"net_weight\", 0) AS \"UP_CNT\", "
-        + "FINAL (SUM(\"DOWN\".\"net_weight\") / COUNT(\"DOWN\".\"net_weight\")) "
-        + "AS \"DOWN_CNT\"\n"
+        + "FIRST(\"STRT\".\"net_weight\", 0) AS \"START_NW\", "
+        + "LAST(\"UP\".\"net_weight\", 0) AS \"UP_CNT\", "
+        + "SUM(\"DOWN\".\"net_weight\") / "
+        + "COUNT(\"DOWN\".\"net_weight\") AS \"DOWN_CNT\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1356,17 +1388,17 @@ public class RelToSqlConverterTest {
         + "FROM (SELECT *\n"
         + "FROM \"foodmart\".\"product\") MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL FIRST(\"STRT\".\"net_weight\", 0) AS \"START_NW\", "
-        + "FINAL LAST(\"DOWN\".\"net_weight\", 0) AS \"UP_CNT\", "
+        + "FIRST(\"STRT\".\"net_weight\", 0) AS \"START_NW\", "
+        + "LAST(\"DOWN\".\"net_weight\", 0) AS \"UP_CNT\", "
         + "FINAL SUM(\"DOWN\".\"net_weight\") AS \"DOWN_CNT\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN "
         + "(\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1389,17 +1421,17 @@ public class RelToSqlConverterTest {
         + "FROM (SELECT *\n"
         + "FROM \"foodmart\".\"product\") MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL FIRST(\"STRT\".\"net_weight\", 0) AS \"START_NW\", "
-        + "FINAL LAST(\"DOWN\".\"net_weight\", 0) AS \"UP_CNT\", "
+        + "FIRST(\"STRT\".\"net_weight\", 0) AS \"START_NW\", "
+        + "LAST(\"DOWN\".\"net_weight\", 0) AS \"UP_CNT\", "
         + "FINAL SUM(\"DOWN\".\"net_weight\") AS \"DOWN_CNT\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN "
         + "(\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))\n"
         + "ORDER BY \"START_NW\", \"UP_CNT\"";
     sql(sql).ok(expected);
@@ -1422,10 +1454,10 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0)"
-        + " < PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0)"
-        + " > NEXT(PREV(\"UP\".\"net_weight\", 0), 1))";
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "NEXT(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
@@ -1446,10 +1478,10 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP PAST LAST ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0)"
-        + " < PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0)"
-        + " > NEXT(PREV(\"UP\".\"net_weight\", 0), 1))";
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "NEXT(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
@@ -1469,11 +1501,10 @@ public class RelToSqlConverterTest {
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO FIRST \"DOWN\"\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
-        + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0)"
-        + " < PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0)"
-        + " > NEXT(PREV(\"UP\".\"net_weight\", 0), 1))";
+        + "DEFINE \"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "NEXT(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
@@ -1494,10 +1525,10 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO LAST \"DOWN\"\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0)"
-        + " < PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0)"
-        + " > NEXT(PREV(\"UP\".\"net_weight\", 0), 1))";
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "NEXT(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
@@ -1518,10 +1549,10 @@ public class RelToSqlConverterTest {
         + "AFTER MATCH SKIP TO LAST \"DOWN\"\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0)"
-        + " < PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0)"
-        + " > NEXT(PREV(\"UP\".\"net_weight\", 0), 1))";
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "NEXT(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
@@ -1544,10 +1575,10 @@ public class RelToSqlConverterTest {
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "SUBSET \"STDN\" = (\"DOWN\", \"STRT\")\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0)"
-        + " < PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0)"
-        + " > NEXT(PREV(\"UP\".\"net_weight\", 0), 1))";
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "NEXT(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
@@ -1570,18 +1601,18 @@ public class RelToSqlConverterTest {
         + "FROM \"foodmart\".\"product\") "
         + "MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL \"STRT\".\"net_weight\" AS \"START_NW\", "
-        + "FINAL LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
-        + "FINAL (SUM(\"STDN\".\"net_weight\") / "
-        + "COUNT(\"STDN\".\"net_weight\")) AS \"AVG_STDN\"\n"
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
+        + "SUM(\"STDN\".\"net_weight\") / "
+        + "COUNT(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "SUBSET \"STDN\" = (\"DOWN\", \"STRT\")\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1605,17 +1636,17 @@ public class RelToSqlConverterTest {
         + "FROM \"foodmart\".\"product\") "
         + "MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL \"STRT\".\"net_weight\" AS \"START_NW\", "
-        + "FINAL LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
-        + "FINAL SUM(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
+        + "SUM(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "SUBSET \"STDN\" = (\"DOWN\", \"STRT\")\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
@@ -1639,88 +1670,88 @@ public class RelToSqlConverterTest {
         + "FROM \"foodmart\".\"product\") "
         + "MATCH_RECOGNIZE(\n"
         + "MEASURES "
-        + "FINAL \"STRT\".\"net_weight\" AS \"START_NW\", "
-        + "FINAL LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
-        + "FINAL SUM(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
+        + "SUM(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
         + "ONE ROW PER MATCH\n"
         + "AFTER MATCH SKIP TO NEXT ROW\n"
         + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
         + "SUBSET \"STDN\" = (\"DOWN\", \"STRT\"), \"STDN2\" = (\"DOWN\", \"STRT\")\n"
         + "DEFINE "
-        + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
         + "PREV(\"DOWN\".\"net_weight\", 1), "
-        + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
         + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
   @Test public void testMatchRecognizeRowsPerMatch1() {
     final String sql = "select *\n"
-      + "  from \"product\" match_recognize\n"
-      + "  (\n"
-      + "   measures STRT.\"net_weight\" as start_nw,"
-      + "   LAST(DOWN.\"net_weight\") as bottom_nw,"
-      + "   SUM(STDN.\"net_weight\") as avg_stdn"
-      + "    ONE ROW PER MATCH\n"
-      + "    pattern (strt down+ up+)\n"
-      + "    subset stdn = (strt, down), stdn2 = (strt, down)\n"
-      + "    define\n"
-      + "      down as down.\"net_weight\" < PREV(down.\"net_weight\"),\n"
-      + "      up as up.\"net_weight\" > prev(up.\"net_weight\")\n"
-      + "  ) mr";
+        + "  from \"product\" match_recognize\n"
+        + "  (\n"
+        + "   measures STRT.\"net_weight\" as start_nw,"
+        + "   LAST(DOWN.\"net_weight\") as bottom_nw,"
+        + "   SUM(STDN.\"net_weight\") as avg_stdn"
+        + "    ONE ROW PER MATCH\n"
+        + "    pattern (strt down+ up+)\n"
+        + "    subset stdn = (strt, down), stdn2 = (strt, down)\n"
+        + "    define\n"
+        + "      down as down.\"net_weight\" < PREV(down.\"net_weight\"),\n"
+        + "      up as up.\"net_weight\" > prev(up.\"net_weight\")\n"
+        + "  ) mr";
 
     final String expected = "SELECT *\n"
-      + "FROM (SELECT *\n"
-      + "FROM \"foodmart\".\"product\") "
-      + "MATCH_RECOGNIZE(\n"
-      + "MEASURES "
-      + "FINAL \"STRT\".\"net_weight\" AS \"START_NW\", "
-      + "FINAL LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
-      + "FINAL SUM(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
-      + "ONE ROW PER MATCH\n"
-      + "AFTER MATCH SKIP TO NEXT ROW\n"
-      + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
-      + "SUBSET \"STDN\" = (\"DOWN\", \"STRT\"), \"STDN2\" = (\"DOWN\", \"STRT\")\n"
-      + "DEFINE "
-      + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
-      + "PREV(\"DOWN\".\"net_weight\", 1), "
-      + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
-      + "PREV(\"UP\".\"net_weight\", 1))";
+        + "FROM (SELECT *\n"
+        + "FROM \"foodmart\".\"product\") "
+        + "MATCH_RECOGNIZE(\n"
+        + "MEASURES "
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
+        + "SUM(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
+        + "ONE ROW PER MATCH\n"
+        + "AFTER MATCH SKIP TO NEXT ROW\n"
+        + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
+        + "SUBSET \"STDN\" = (\"DOWN\", \"STRT\"), \"STDN2\" = (\"DOWN\", \"STRT\")\n"
+        + "DEFINE "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
   @Test public void testMatchRecognizeRowsPerMatch2() {
     final String sql = "select *\n"
-      + "  from \"product\" match_recognize\n"
-      + "  (\n"
-      + "   measures STRT.\"net_weight\" as start_nw,"
-      + "   LAST(DOWN.\"net_weight\") as bottom_nw,"
-      + "   SUM(STDN.\"net_weight\") as avg_stdn"
-      + "    ALL ROWS PER MATCH\n"
-      + "    pattern (strt down+ up+)\n"
-      + "    subset stdn = (strt, down), stdn2 = (strt, down)\n"
-      + "    define\n"
-      + "      down as down.\"net_weight\" < PREV(down.\"net_weight\"),\n"
-      + "      up as up.\"net_weight\" > prev(up.\"net_weight\")\n"
-      + "  ) mr";
+        + "  from \"product\" match_recognize\n"
+        + "  (\n"
+        + "   measures STRT.\"net_weight\" as start_nw,"
+        + "   LAST(DOWN.\"net_weight\") as bottom_nw,"
+        + "   SUM(STDN.\"net_weight\") as avg_stdn"
+        + "    ALL ROWS PER MATCH\n"
+        + "    pattern (strt down+ up+)\n"
+        + "    subset stdn = (strt, down), stdn2 = (strt, down)\n"
+        + "    define\n"
+        + "      down as down.\"net_weight\" < PREV(down.\"net_weight\"),\n"
+        + "      up as up.\"net_weight\" > prev(up.\"net_weight\")\n"
+        + "  ) mr";
 
     final String expected = "SELECT *\n"
-      + "FROM (SELECT *\n"
-      + "FROM \"foodmart\".\"product\") "
-      + "MATCH_RECOGNIZE(\n"
-      + "MEASURES "
-      + "RUNNING \"STRT\".\"net_weight\" AS \"START_NW\", "
-      + "RUNNING LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
-      + "RUNNING SUM(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
-      + "ALL ROWS PER MATCH\n"
-      + "AFTER MATCH SKIP TO NEXT ROW\n"
-      + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
-      + "SUBSET \"STDN\" = (\"DOWN\", \"STRT\"), \"STDN2\" = (\"DOWN\", \"STRT\")\n"
-      + "DEFINE "
-      + "\"DOWN\" AS PREV(\"DOWN\".\"net_weight\", 0) < "
-      + "PREV(\"DOWN\".\"net_weight\", 1), "
-      + "\"UP\" AS PREV(\"UP\".\"net_weight\", 0) > "
-      + "PREV(\"UP\".\"net_weight\", 1))";
+        + "FROM (SELECT *\n"
+        + "FROM \"foodmart\".\"product\") "
+        + "MATCH_RECOGNIZE(\n"
+        + "MEASURES "
+        + "\"STRT\".\"net_weight\" AS \"START_NW\", "
+        + "LAST(\"DOWN\".\"net_weight\", 0) AS \"BOTTOM_NW\", "
+        + "SUM(\"STDN\".\"net_weight\") AS \"AVG_STDN\"\n"
+        + "ALL ROWS PER MATCH\n"
+        + "AFTER MATCH SKIP TO NEXT ROW\n"
+        + "PATTERN (\"STRT\" \"DOWN\" + \"UP\" +)\n"
+        + "SUBSET \"STDN\" = (\"DOWN\", \"STRT\"), \"STDN2\" = (\"DOWN\", \"STRT\")\n"
+        + "DEFINE "
+        + "\"DOWN\" AS \"DOWN\".\"net_weight\" < "
+        + "PREV(\"DOWN\".\"net_weight\", 1), "
+        + "\"UP\" AS \"UP\".\"net_weight\" > "
+        + "PREV(\"UP\".\"net_weight\", 1))";
     sql(sql).ok(expected);
   }
 
